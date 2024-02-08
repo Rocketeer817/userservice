@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.MultiValueMapAdapter;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -39,6 +40,7 @@ public class AuthService {
 
         User user = userOptional.get();
 
+        //validate the password
         if(!_bCryptPasswordEncoder.matches(password, user.getPassword())){
             return null;
         }
@@ -46,6 +48,7 @@ public class AuthService {
 //            return null;
 //        }
 
+        //Generate a token
         String token = RandomStringUtils.randomAlphanumeric(30);
 
         Session session = new Session();
@@ -103,6 +106,10 @@ public class AuthService {
 
         if (sessionOptional.isEmpty()) {
             return null;
+        }
+
+        if(sessionOptional.get().getSessionStatus() == SessionStatus.ENDED){
+            return SessionStatus.ENDED;
         }
 
         return SessionStatus.ACTIVE;
