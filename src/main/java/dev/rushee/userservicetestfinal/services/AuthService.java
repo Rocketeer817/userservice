@@ -6,6 +6,10 @@ import dev.rushee.userservicetestfinal.models.Session;
 import dev.rushee.userservicetestfinal.models.SessionStatus;
 import dev.rushee.userservicetestfinal.models.User;
 import dev.rushee.userservicetestfinal.repositories.UserRepository;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.MacAlgorithm;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -14,9 +18,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MultiValueMapAdapter;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import javax.crypto.SecretKey;
+import java.util.*;
 
 @Service
 public class AuthService {
@@ -24,6 +27,8 @@ public class AuthService {
     private SessionRepository sessionRepository;
 
     private BCryptPasswordEncoder _bCryptPasswordEncoder;
+
+    private SecretKey _secretKey;
 
     public AuthService(UserRepository userRepository, SessionRepository sessionRepository,BCryptPasswordEncoder bCryptPasswordEncoder) {
         this.userRepository = userRepository;
@@ -49,8 +54,27 @@ public class AuthService {
 //        }
 
         //Generate a token
-        String token = RandomStringUtils.randomAlphanumeric(30);
+        //String token = RandomStringUtils.randomAlphanumeric(30);
 
+        Date dt = new Date();
+        Calendar c = Calendar.getInstance();
+        c.setTime(dt);
+        c.add(Calendar.DATE, 1);
+        dt = c.getTime();
+
+        Map<String, Object> jsonForJwt = new HashMap<>();
+        jsonForJwt.put("email", user.getEmail());
+        jsonForJwt.put("roles", user.getRoles());
+        jsonForJwt.put("expirationDate", dt);
+        //if(xx =!null)
+        jsonForJwt.put("createdAt" , new Date());
+
+        MacAlgorithm alg = Jwts.SIG.HS256;
+        SecretKey key = getSecretKey();
+
+        String token = Jwts.builder().claims(jsonForJwt).signWith(key, alg).compact();
+
+        //Create a session
         Session session = new Session();
         session.setSessionStatus(SessionStatus.ACTIVE);
         session.setToken(token);
@@ -58,6 +82,7 @@ public class AuthService {
         sessionRepository.save(session);
 
         UserDto userDto = new UserDto();
+        userDto.setEmail(user.getEmail());
 
 //        Map<String, String> headers = new HashMap<>();
 //        headers.put(HttpHeaders.SET_COOKIE, token);
@@ -108,11 +133,42 @@ public class AuthService {
             return null;
         }
 
-        if(sessionOptional.get().getSessionStatus() == SessionStatus.ENDED){
+        Session sessionObj = sessionOptional.get();
+
+        if(sessionObj.getSessionStatus() == SessionStatus.ENDED){
             return SessionStatus.ENDED;
         }
 
+        SecretKey key = getSecretKey();
+
+        Claims claims =
+                Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+
+
+//        if(claims.getExpiration().before(new Date())){
+//            //sessionObj.setSessionStatus(SessionStatus.ENDED);
+//            //sessionRepository.save(sessionObj);
+//            return SessionStatus.ENDED;
+//        }
+
         return SessionStatus.ACTIVE;
+    }
+
+    private SecretKey getSecretKey(){
+
+        synchronized (this.getClass()){
+            if(_secretKey == null){
+                synchronized (this.getClass()){
+                    if(_secretKey == null){
+                        MacAlgorithm alg = Jwts.SIG.HS256;
+                        _secretKey = alg.key().build();
+                        return _secretKey;
+                    }
+                }
+            }
+            return _secretKey;
+        }
+
     }
 
 }
