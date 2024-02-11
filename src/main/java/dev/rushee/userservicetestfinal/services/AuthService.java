@@ -1,5 +1,6 @@
 package dev.rushee.userservicetestfinal.services;
 
+import dev.rushee.userservicetestfinal.dtos.ValidateTokenResponseDto;
 import dev.rushee.userservicetestfinal.repositories.SessionRepository;
 import dev.rushee.userservicetestfinal.dtos.UserDto;
 import dev.rushee.userservicetestfinal.models.Session;
@@ -59,10 +60,12 @@ public class AuthService {
         Date dt = new Date();
         Calendar c = Calendar.getInstance();
         c.setTime(dt);
-        c.add(Calendar.DATE, 1);
+        //c.add(Calendar.DATE, 1);
+        c.add(Calendar.MINUTE,1);
         dt = c.getTime();
 
         Map<String, Object> jsonForJwt = new HashMap<>();
+        jsonForJwt.put("userId", user.getId());
         jsonForJwt.put("email", user.getEmail());
         jsonForJwt.put("roles", user.getRoles());
         jsonForJwt.put("expirationDate", dt);
@@ -126,7 +129,8 @@ public class AuthService {
         return UserDto.from(savedUser);
     }
 
-    public SessionStatus validate(String token, Long userId) {
+    public ValidateTokenResponseDto validate(String token, Long userId)
+    {
         Optional<Session> sessionOptional = sessionRepository.findByTokenAndUser_Id(token, userId);
 
         if (sessionOptional.isEmpty()) {
@@ -136,7 +140,7 @@ public class AuthService {
         Session sessionObj = sessionOptional.get();
 
         if(sessionObj.getSessionStatus() == SessionStatus.ENDED){
-            return SessionStatus.ENDED;
+            return null;
         }
 
         SecretKey key = getSecretKey();
@@ -144,14 +148,15 @@ public class AuthService {
         Claims claims =
                 Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
 
+        Date expirationDate = new Date((long)claims.get("expirationDate"));
 
-//        if(claims.getExpiration().before(new Date())){
-//            //sessionObj.setSessionStatus(SessionStatus.ENDED);
-//            //sessionRepository.save(sessionObj);
-//            return SessionStatus.ENDED;
-//        }
+        if(expirationDate.before(new Date())){
+            sessionObj.setSessionStatus(SessionStatus.ENDED);
+            sessionRepository.save(sessionObj);
+            return null;
+        }
 
-        return SessionStatus.ACTIVE;
+        return ValidateTokenResponseDto.from(claims);
     }
 
     private SecretKey getSecretKey(){
